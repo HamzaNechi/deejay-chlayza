@@ -24,6 +24,10 @@
     var currentTrack = 0;
     var ready = false;
     var loadingComplete = !document.querySelector(".loading");
+    var startupAttempted = false;
+    var waitingForGesture = false;
+    var animationPausedByPlayer = false;
+    var sceneEngine = null;
 
     function updateControls() {
         var hasTracks = tracks.length > 0;
@@ -42,16 +46,74 @@
         status.classList.add("error");
     }
 
+    function resumeAfterGesture(event) {
+        if (!waitingForGesture || (event.target.closest && event.target.closest(".playlist"))) {
+            return;
+        }
+
+        clearGestureWait();
+        playCurrentTrack();
+    }
+
+    function clearGestureWait() {
+        waitingForGesture = false;
+        window.removeEventListener("pointerdown", resumeAfterGesture);
+    }
+
+    function waitForGesture() {
+        waitingForGesture = true;
+        status.textContent = "Click anywhere or press Play to start the music.";
+        toggle.setAttribute("aria-expanded", "true");
+        panel.hidden = false;
+        window.addEventListener("pointerdown", resumeAfterGesture);
+    }
+
+    function resumeAnimation() {
+        if (!animationPausedByPlayer) {
+            return;
+        }
+
+        if (sceneEngine) {
+            sceneEngine.enabled = true;
+        } else if (window.TweenMax && typeof window.TweenMax.resumeAll === "function") {
+            window.TweenMax.resumeAll();
+        }
+        animationPausedByPlayer = false;
+    }
+
+    function pauseAnimation() {
+        if (sceneEngine) {
+            sceneEngine.enabled = false;
+        } else if (window.TweenMax && typeof window.TweenMax.pauseAll === "function") {
+            window.TweenMax.pauseAll();
+        }
+        animationPausedByPlayer = !!sceneEngine || (!sceneEngine && !!window.TweenMax);
+    }
+
     function playCurrentTrack() {
+        resumeAnimation();
         var result = audio.play();
         if (result && typeof result.catch === "function") {
             result.catch(function (error) {
-                status.textContent = "Press Play to start the music.";
-                if (error.name !== "NotAllowedError") {
+                if (error.name === "NotAllowedError") {
+                    waitForGesture();
+                } else {
                     showError("Could not play this track: " + error.message);
                 }
                 updateControls();
             });
+        }
+    }
+
+    function startInitialTrack() {
+        if (startupAttempted || !ready || !loadingComplete || !tracks.length) {
+            return;
+        }
+
+        startupAttempted = true;
+        selectTrack(0, false);
+        if (audio.paused) {
+            playCurrentTrack();
         }
     }
 
@@ -101,13 +163,43 @@
             playCurrentTrack();
         } else {
             audio.pause();
+            pauseAnimation();
         }
     });
 
     window.addEventListener("pablo-audio-ready", function (event) {
+        var matterEngine = window.Matter && window.Matter.Engine;
+        if (matterEngine && typeof matterEngine.run === "function") {
+            var originalRun = matterEngine.run;
+            matterEngine.run = function (engine) {
+                sceneEngine = engine;
+                matterEngine.run = originalRun;
+                return originalRun.apply(this, arguments);
+            };
+        }
+
         audio = event.detail;
         ready = true;
-        audio.addEventListener("play", updateControls);
+        var originalPlay = audio.play.bind(audio);
+        audio.play = function () {
+            var result = originalPlay();
+            if (result && typeof result.catch === "function") {
+                return result.catch(function (error) {
+                    if (error.name === "NotAllowedError") {
+                        if (loadingComplete && tracks.length && !waitingForGesture) {
+                            waitForGesture();
+                        }
+                        return;
+                    }
+                    throw error;
+                });
+            }
+            return result;
+        };
+        audio.addEventListener("play", function () {
+            clearGestureWait();
+            updateControls();
+        });
         audio.addEventListener("pause", updateControls);
         audio.addEventListener("error", function () {
             if (audio.error) {
@@ -120,6 +212,7 @@
             }, 0);
         });
         updateControls();
+        startInitialTrack();
     }, { once: true });
 
     var loadingObserver = new MutationObserver(function () {
@@ -127,6 +220,7 @@
             loadingComplete = true;
             loadingObserver.disconnect();
             updateControls();
+            startInitialTrack();
         }
     });
     loadingObserver.observe(document.body, { childList: true, subtree: true });
@@ -155,8 +249,11 @@
                 tracks.push(track);
             });
 
-            status.textContent = "If the music does not start, press Play.";
+            if (!waitingForGesture) {
+                status.textContent = "If the music does not start, click anywhere or press Play.";
+            }
             updateControls();
+            startInitialTrack();
         })
         .catch(function (error) {
             showError("Could not load the playlist: " + error.message);
