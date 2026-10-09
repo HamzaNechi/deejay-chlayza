@@ -18,6 +18,8 @@
     var previous = document.querySelector(".playlist-previous");
     var play = document.querySelector(".playlist-play");
     var next = document.querySelector(".playlist-next");
+    var navPrevious = document.querySelector(".nav-track-previous");
+    var navNext = document.querySelector(".nav-track-next");
     var status = document.querySelector(".playlist-status");
     var tracks = [];
     var audio = null;
@@ -36,6 +38,8 @@
         select.disabled = !canUsePlayer || !hasTracks;
         previous.disabled = !canUsePlayer || tracks.length < 2;
         next.disabled = !canUsePlayer || tracks.length < 2;
+        navPrevious.disabled = !canUsePlayer || tracks.length < 2;
+        navNext.disabled = !canUsePlayer || tracks.length < 2;
         play.disabled = !canUsePlayer || !hasTracks;
         play.textContent = audio && !audio.paused ? "Pause" : "Play";
         play.setAttribute("aria-label", audio && !audio.paused ? "Pause" : "Play");
@@ -118,7 +122,7 @@
     }
 
     function selectTrack(index, shouldPlay) {
-        if (!tracks.length) {
+        if (!audio || !tracks.length) {
             return;
         }
 
@@ -144,6 +148,18 @@
         var isExpanded = toggle.getAttribute("aria-expanded") === "true";
         toggle.setAttribute("aria-expanded", String(!isExpanded));
         panel.hidden = isExpanded;
+    });
+
+    navPrevious.addEventListener("click", function (event) {
+        event.preventDefault();
+        event.stopPropagation();
+        selectTrack(currentTrack - 1, true);
+    });
+
+    navNext.addEventListener("click", function (event) {
+        event.preventDefault();
+        event.stopPropagation();
+        selectTrack(currentTrack + 1, true);
     });
 
     select.addEventListener("change", function () {

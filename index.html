@@ -38,28 +38,41 @@
                     <span class="label">Sound | on</span>
                 </div>
                 <div class="prompt share-prompt">
-                    <a class="network twitter icons" target="_blank" rel="noopener noreferrer" href="https://twitter.com/intent/tweet">&#xe004;</a>
-                    <a class="network facebook icons" target="_blank" rel="noopener noreferrer" href="https://www.facebook.com/sharer/sharer.php">&#xe005;</a>
-                    <div class="button icons">&#xe001;</div>
-                    <span class="label">Share Deejay Chlayza</span>
+                    <button class="button nav-track-previous" type="button" aria-label="Previous track" disabled>Prev</button>
+                    <span class="label">Previous track</span>
                 </div>
-                <a class="prompt adopt-prompt" href="http://wwf.to/WRoivm" target="_blank">
-                    <div class="button icons">&#xe000;</div>
-                    <span class="label">Adopt a Flamingo</span>
-                </a>
+                <div class="prompt adopt-prompt">
+                    <button class="button nav-track-next" type="button" aria-label="Next track" disabled>Next</button>
+                    <span class="label">Next track</span>
+                </div>
             </nav>
             <section class="playlist" aria-label="Music playlist">
                 <button class="playlist-toggle" type="button" aria-expanded="false" aria-controls="playlist-panel">
                     Music playlist
                 </button>
                 <div class="playlist-panel" id="playlist-panel" hidden>
-                    <label for="playlist-tracks">Choose a track</label>
-                    <select id="playlist-tracks" disabled></select>
+                    <div class="playlist-now">
+                        <span class="playlist-now-title">Track 1</span>
+                    </div>
+
+                    <ul class="playlist-list" id="playlist-list" role="listbox" aria-label="Tracks"></ul>
+
+                    <!-- conservé pour playlist.js, masqué visuellement -->
+                    <label for="playlist-tracks" class="sr-only">Choose a track</label>
+                    <select id="playlist-tracks" class="sr-only" disabled></select>
+
                     <div class="playlist-controls">
                         <button class="playlist-previous" type="button" aria-label="Previous track" disabled>&laquo;</button>
                         <button class="playlist-play" type="button" aria-label="Play" disabled>Play</button>
                         <button class="playlist-next" type="button" aria-label="Next track" disabled>&raquo;</button>
                     </div>
+
+                    <div class="playlist-volume">
+                        <span class="icons playlist-volume-icon" aria-hidden="true">&#xe002;</span>
+                        <input class="playlist-volume-range" type="range" min="0" max="100" value="100" aria-label="Volume">
+                        <output class="playlist-volume-value">100</output>
+                    </div>
+
                     <p class="playlist-status" aria-live="polite">Loading playlist...</p>
                 </div>
             </section>
@@ -76,14 +89,61 @@
         </div>
         <div class="scripts">
             <script src="assets/js/playlist.js"></script>
-            <script data-main="assets/js/app.mineef3.js?v=0.3" src="assets/js/lib/require.js"></script>
             <script>
-                (function () {
-                    var shareUrl = encodeURIComponent(window.location.href);
-                    document.querySelector(".network.twitter").href = "https://twitter.com/intent/tweet?url=" + shareUrl + "&text=Listening%20to%20Deejay%20Chlayza";
-                    document.querySelector(".network.facebook").href = "https://www.facebook.com/sharer/sharer.php?u=" + shareUrl;
-                }());
+            (function () {
+                var select = document.getElementById('playlist-tracks');
+                var list   = document.getElementById('playlist-list');
+                var title  = document.querySelector('.playlist-now-title');
+                var range  = document.querySelector('.playlist-volume-range');
+                var value  = document.querySelector('.playlist-volume-value');
+
+                function choose(i) {
+                    select.selectedIndex = i;
+                    select.dispatchEvent(new Event('change', { bubbles: true }));
+                    sync();
+                }
+
+                function render() {
+                    list.innerHTML = '';
+                    Array.prototype.forEach.call(select.options, function (opt, i) {
+                        var li = document.createElement('li');
+                        li.setAttribute('role', 'option');
+                        li.tabIndex = 0;
+                        li.textContent = opt.textContent;
+                        li.addEventListener('click', function () { choose(i); });
+                        li.addEventListener('keydown', function (e) {
+                            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); choose(i); }
+                        });
+                        list.appendChild(li);
+                    });
+                    sync();
+                }
+
+                function sync() {
+                    var current = select.selectedIndex;
+                    Array.prototype.forEach.call(list.children, function (li, i) {
+                        var on = i === current;
+                        li.classList.toggle('active', on);
+                        li.setAttribute('aria-selected', on);
+                    });
+                    if (current >= 0 && select.options[current]) {
+                        title.textContent = select.options[current].textContent;
+                    }
+                }
+
+                range.addEventListener('input', function () {
+                    value.textContent = range.value;
+                    range.style.setProperty('--fill', range.value + '%');
+                    document.dispatchEvent(new CustomEvent('playlist:volume', { detail: { volume: +range.value } }));
+                });
+
+                new MutationObserver(render).observe(select, { childList: true });
+                select.addEventListener('change', sync);
+                setInterval(sync, 500); // si playlist.js change de piste sans événement
+                render();
+            })();
             </script>
+            <script data-main="assets/js/app.mineef3.js?v=0.3" src="assets/js/lib/require.js"></script>
             </div>
     </body>
 
